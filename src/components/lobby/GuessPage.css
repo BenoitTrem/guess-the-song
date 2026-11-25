@@ -1,0 +1,101 @@
+.guess-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.timer {
+  font-variant-numeric: tabular-nums;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+.timer.urgent {
+  color: #d33;
+}
+
+.clip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+.clip-frame {
+  position: relative;
+  width: 100%;
+  max-width: 320px;
+  aspect-ratio: 16 / 9;
+}
+.clip-video,
+.clip-video iframe {
+  width: 100%;
+  height: 100%;
+}
+.clip-cover {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #1c1c28;
+  color: #fff;
+  font-size: 3rem;
+}
+
+.guess-box {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.guess-box input {
+  flex: 1;
+  min-width: 0;
+}
+.guess-box p {
+  width: 100%;
+  margin: 0;
+}
+.correct {
+  color: #1a9a4a;
+  font-weight: 700;
+}
+
+.reveal {
+  text-align: center;
+  margin: 0.5rem 0;
+}
+
+.scoreboard,
+.leaderboard {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+}
+.scoreboard li,
+.leaderboard li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.4rem 0;
+}
+.scoreboard li.solved {
+  font-weight: 700;
+  color: #1a9a4a;
+}
+.scoreboard em {
+  font-style: normal;
+}
+
+.leaderboard li {
+  justify-content: flex-start;
+  font-size: 1.1rem;
+}
+.leaderboard .rank {
+  width: 2rem;
+  opacity: 0.6;
+}
+.leaderboard .name {
+  flex: 1;
+}
+.leaderboard li.winner {
+  font-weight: 700;
+}

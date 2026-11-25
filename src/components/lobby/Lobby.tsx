@@ -3,7 +3,6 @@ import {
   useParams,
   useLocation,
   Navigate,
-  Link,
   useNavigate,
 } from "react-router-dom";
 import { useLobby } from "../hooks/useLobby";
@@ -12,6 +11,7 @@ import CopyField from "./CopyField";
 import ConfirmModal from "./ConfirmModal";
 import Countdown from "./Countdown";
 import PickPage from "./PickPage";
+import GuessPage from "./GuessPage";
 import "./Lobby.css";
 
 export default function Lobby() {
@@ -22,13 +22,19 @@ export default function Lobby() {
   const { username } = useUsername();
   const [showQuitModal, setShowQuitModal] = useState(false);
 
-  const { players, status, error, kick, game, startGame } = useLobby(
-    code!,
-    isHost,
-    username,
-  );
+  const {
+    players,
+    status,
+    error,
+    kick,
+    game,
+    startGame,
+    submitSongs,
+    submitGuess,
+    feedback,
+    myId,
+  } = useLobby(code!, isHost, username);
 
-  // must come after the hooks
   if (!username) return <Navigate to="/" replace />;
 
   const sorted = [...players].sort(
@@ -62,7 +68,7 @@ export default function Lobby() {
 
       {status === "connected" && (
         <>
-          {game.phase !== "pick" && (
+          {(game.phase === "lobby" || game.phase === "countdown") && (
             <>
               {isHost && (
                 <>
@@ -113,7 +119,20 @@ export default function Lobby() {
             </>
           )}
 
-          {game.phase === "pick" && <PickPage />}
+          {game.phase === "pick" && (
+            <PickPage timeLeft={game.timeLeft} onSongsChange={submitSongs} />
+          )}
+          {(game.phase === "guess" ||
+            game.phase === "reveal" ||
+            game.phase === "results") && (
+            <GuessPage
+              game={game}
+              players={players}
+              myId={myId}
+              feedback={feedback}
+              onGuess={submitGuess}
+            />
+          )}
 
           <button className="quit-btn" onClick={handleQuit}>
             Quit lobby
