@@ -44,12 +44,19 @@
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: stretch;
 }
-.guess-box input {
+
+.lobby .guess-box input {
   flex: 1;
   min-width: 0;
+  margin-bottom: var(--depth);
 }
+
+.guess-box button {
+  flex-shrink: 0;
+}
+
 .guess-box p {
   width: 100%;
   margin: 0;
@@ -84,7 +91,46 @@
 .scoreboard em {
   font-style: normal;
 }
+.scoreboard,
+.leaderboard {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+}
 
+.scoreboard li,
+.leaderboard li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.4rem 0;
+}
+
+.scoreboard li.solved {
+  font-weight: 700;
+}
+
+.score-info {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.points-gained {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #1a9a4a;
+  background-color: #1a9a4a1a;
+  padding: 0.2rem 0.5rem;
+  border-radius: 5px;
+}
+
+.total-score {
+  font-weight: 600;
+  color: var(--couleur-texte-primaire);
+  white-space: nowrap;
+}
 .leaderboard li {
   justify-content: flex-start;
   font-size: 1.1rem;
@@ -98,4 +144,10 @@
 }
 .leaderboard li.winner {
   font-weight: 700;
+}
+
+.leaderboard .crown {
+  color: #facc15;
+  vertical-align: -3px;
+  margin-right: 6px;
 }

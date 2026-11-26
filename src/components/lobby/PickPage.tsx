@@ -8,6 +8,7 @@ import {
   type VideoResult,
 } from "../hooks/youtube";
 import "./Lobby.css";
+import "./PickPage.css";
 
 type Props = {
   timeLeft: number;
@@ -153,6 +154,7 @@ export default function PickPage({ timeLeft, onSongsChange }: Props) {
         <>
           <div className="search-row">
             <input
+              className="pick-input"
               placeholder="Search a song or paste a YouTube link"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -192,14 +194,13 @@ export default function PickPage({ timeLeft, onSongsChange }: Props) {
 
           {selected && (
             <div className="clip-editor">
-              <p>
-                <strong>{selected.title}</strong>
-              </p>
+              <p className="clip-title">{selected.title}</p>
               <div className="player" ref={playerBox} />
 
               <label>
                 Start at {formatTime(start)}
                 <input
+                  className="slider"
                   type="range"
                   min={0}
                   max={maxStart}
@@ -212,6 +213,7 @@ export default function PickPage({ timeLeft, onSongsChange }: Props) {
               <label>
                 Clip length: {length}s
                 <input
+                  className="slider"
                   type="range"
                   min={1}
                   max={10}

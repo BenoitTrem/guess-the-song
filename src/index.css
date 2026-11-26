@@ -1,4 +1,6 @@
 :root {
+  --sans: "Bricolage Grotesque", system-ui, "Segoe UI", Roboto, sans-serif;
+
   --text: #94a3b8;
   --text-h: #f1f5f9;
   --bg: #0b1120;
@@ -11,8 +13,13 @@
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 0 24px rgba(59, 130, 246, 0.15);
   --glow: 0 0 20px rgba(59, 130, 246, 0.55);
 
-  --sans: system-ui, "Segoe UI", Roboto, sans-serif;
+  --card-bg: #172340;
+  --card-edge: #2c3e66;
+
   --mono: ui-monospace, Consolas, monospace;
+
+  --accent-edge: #1d4ed8;
+  --depth: 5px;
 
   font: 17px/150% var(--sans);
   color-scheme: dark;
@@ -21,16 +28,28 @@
   -webkit-font-smoothing: antialiased;
 }
 
+* {
+  font-family: var(--sans);
+}
+
 body {
   margin: 0;
 }
 
 #root {
-  max-width: 720px;
+  position: relative;
+  z-index: 1;
+  max-width: 820px;
   margin: 0 auto;
   padding: 32px 20px;
   min-height: 100svh;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-content {
+  flex: 1;
 }
 
 h1,
@@ -63,49 +82,136 @@ a:hover {
   color: var(--accent-hover);
 }
 
+@property --angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
 .card {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background:
+    linear-gradient(var(--card-bg, #172340), var(--card-bg, #172340))
+      padding-box,
+    conic-gradient(
+        from var(--angle, 0deg),
+        var(--card-edge, #2c3e66) 0%,
+        var(--accent, #3b82f6) 12%,
+        var(--accent-hover, #60a5fa) 18%,
+        var(--card-edge, #2c3e66) 32%,
+        var(--card-edge, #2c3e66) 100%
+      )
+      border-box;
+  background-color: #172340;
+  border: 2px solid transparent;
   border-radius: var(--radius);
   padding: 20px;
-  box-shadow: var(--shadow);
-  transition:
-    border 0.2s ease,
-    box-shadow 0.2s ease;
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.55),
+    0 0 18px rgba(59, 130, 246, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  animation:
+    border-spin 6s linear infinite,
+    glow-pulse 3s ease-in-out infinite;
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 12px 32px rgba(0, 0, 0, 0.55),
+      0 0 18px rgba(59, 130, 246, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+  50% {
+    box-shadow:
+      0 12px 32px rgba(0, 0, 0, 0.55),
+      0 0 34px rgba(59, 130, 246, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+}
+@keyframes border-spin {
+  to {
+    --angle: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    animation: none;
+  }
 }
 
 button {
+  --btn-bg: var(--accent);
+  --btn-bg-hover: var(--accent-hover);
+  --btn-edge: #1d4ed8;
+  --btn-color: #fff;
+
   font: inherit;
-  font-weight: 600;
-  color: #fff;
-  background: var(--accent);
+  font-weight: 700;
+  color: var(--btn-color);
+  background: var(--btn-bg);
   border: none;
   border-radius: var(--radius);
   padding: 10px 22px;
   cursor: pointer;
+  position: relative;
+  box-shadow: 0 var(--depth) 0 var(--btn-edge);
+  margin-bottom: var(--depth);
   transition:
-    background-color 0.2s,
-    transform 0.2s;
+    translate 0.08s ease,
+    box-shadow 0.08s ease,
+    background-color 0.2s;
+}
+
+button {
+  /* ...rest unchanged... */
+  transition:
+    translate 0.08s ease,
+    box-shadow 0.08s ease,
+    background-color 0.2s;
 }
 
 @media (hover: hover) {
-  button:hover {
-    background: var(--accent-hover);
+  button:hover:not(:disabled) {
+    background: var(--btn-bg-hover);
+    translate: 0 calc(var(--depth) * 0.6);
+    box-shadow: 0 calc(var(--depth) * 0.4) 0 var(--btn-edge);
   }
+}
 
-  button:active {
-    transform: scale(0.97);
-  }
+button:active:not(:disabled) {
+  translate: 0 var(--depth);
+  box-shadow: 0 0 0 var(--btn-edge);
 }
 
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  translate: none;
 }
 
 button.secondary {
-  background: var(--accent-bg);
-  color: var(--accent-hover);
+  --btn-bg: #2f4778;
+  --btn-bg-hover: #3a5490;
+  --btn-edge: #1e3158;
+  --btn-color: #dbeafe;
+}
+
+button.btn-red {
+  --btn-bg: #dc2626;
+  --btn-bg-hover: #ef4444;
+  --btn-edge: #7f1d1d;
+  --btn-color: #fff;
+}
+
+button.icon-btn {
+  --depth: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  line-height: 1;
 }
 
 input {

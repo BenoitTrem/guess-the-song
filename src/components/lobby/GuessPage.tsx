@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Feedback, GameState, Player, Round } from "../hooks/useLobby";
 import { loadYouTubeApi } from "../hooks/youtube";
 import "./GuessPage.css";
+import { Crown } from "lucide-react";
 
 type Props = {
   game: GameState;
@@ -9,6 +10,8 @@ type Props = {
   myId: string;
   feedback: Feedback | null;
   onGuess: (text: string) => void;
+  isHost: boolean;
+  onReplay: () => void;
 };
 
 function ClipPlayer({ round, revealed }: { round: Round; revealed: boolean }) {
@@ -80,9 +83,17 @@ function Scoreboard({
         return (
           <li key={p.id} className={got ? "solved" : ""}>
             <span>{p.name}</span>
-            <span>
-              {got && <em>{revealing ? "+1 " : "found it "}</em>}
-              {game.scores[p.id] ?? 0} pts
+
+            <span className="score-info">
+              {got && (
+                <span className="points-gained">
+                  {revealing ? `+${game.gained[p.id] ?? 0}` : "Found it!"}
+                </span>
+              )}
+
+              <span className="total-score">
+                {(game.scores[p.id] ?? 0).toLocaleString()} pts
+              </span>
             </span>
           </li>
         );
@@ -91,7 +102,17 @@ function Scoreboard({
   );
 }
 
-function Results({ game, players }: { game: GameState; players: Player[] }) {
+function Results({
+  game,
+  players,
+  isHost,
+  onReplay,
+}: {
+  game: GameState;
+  players: Player[];
+  isHost: boolean;
+  onReplay: () => void;
+}) {
   const ranked = [...players].sort(
     (a, b) => (game.scores[b.id] ?? 0) - (game.scores[a.id] ?? 0),
   );
@@ -126,13 +147,22 @@ function Results({ game, players }: { game: GameState; players: Player[] }) {
           >
             <span className="rank">{ranks[i]}</span>
             <span className="name">
-              {top > 0 && score(p) === top && "👑 "}
+              {top > 0 && score(p) === top && (
+                <Crown size={18} className="crown" />
+              )}
               {p.name}
             </span>
-            <span className="pts">{score(p)} pts</span>
+            <span className="pts">{score(p).toLocaleString()} pts</span>
           </li>
         ))}
       </ol>
+      {isHost ? (
+        <button className="start-btn" onClick={onReplay}>
+          Play again
+        </button>
+      ) : (
+        <p className="hint">Waiting for the leader to start another game...</p>
+      )}
     </div>
   );
 }
@@ -143,6 +173,8 @@ export default function GuessPage({
   myId,
   feedback,
   onGuess,
+  isHost,
+  onReplay,
 }: Props) {
   const [text, setText] = useState("");
   const [seen, setSeen] = useState(0);
@@ -153,7 +185,14 @@ export default function GuessPage({
   }, [roundIndex]);
 
   if (game.phase === "results")
-    return <Results game={game} players={players} />;
+    return (
+      <Results
+        game={game}
+        players={players}
+        isHost={isHost}
+        onReplay={onReplay}
+      />
+    );
 
   const round = game.round;
   if (!round) return null;
@@ -208,7 +247,14 @@ export default function GuessPage({
               This is your song. Sit tight while the others guess!
             </p>
           ) : solved ? (
-            <p className="correct">Correct! Waiting for the others...</p>
+            <p className="correct">
+              {feedback?.correct && feedback.round === round.index
+                ? feedback.perfect
+                  ? "Perfect! "
+                  : "Close enough! "
+                : "Correct! "}
+              +{game.gained[myId] ?? 0} points. Waiting for the others...
+            </p>
           ) : (
             <>
               <input

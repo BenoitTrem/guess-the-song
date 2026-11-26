@@ -62,3 +62,20 @@
     transform: translateY(-5px);
   }
 }
+
+.username-input {
+  transition: border-color 0.2s ease;
+}
+
+.username-input:hover {
+  border-color: var(--accent);
+}
+
+.join-box {
+  flex-wrap: wrap;
+}
+
+.join-box .error {
+  width: 100%;
+  margin: 0;
+}

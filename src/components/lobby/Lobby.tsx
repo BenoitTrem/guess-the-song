@@ -13,6 +13,7 @@ import Countdown from "./Countdown";
 import PickPage from "./PickPage";
 import GuessPage from "./GuessPage";
 import "./Lobby.css";
+import { Crown } from "lucide-react";
 
 export default function Lobby() {
   const { code } = useParams();
@@ -33,6 +34,7 @@ export default function Lobby() {
     submitGuess,
     feedback,
     myId,
+    replay,
   } = useLobby(code!, isHost, username);
 
   if (!username) return <Navigate to="/" replace />;
@@ -80,11 +82,15 @@ export default function Lobby() {
                 </>
               )}
 
-              <h3>Players ({players.length})</h3>
+              <h3 className="player-h">Players ({players.length})</h3>
               <ul className="players">
                 {sorted.map((p) => (
                   <li key={p.id}>
-                    {p.isHost && <span className="crown">👑</span>}
+                    {p.isHost && (
+                      <span className="crown">
+                        <Crown size={18} />
+                      </span>
+                    )}
                     <span className="name">{p.name}</span>
                     {p.isHost && <span className="badge">Leader</span>}
                     {isHost && !p.isHost && (
@@ -131,6 +137,8 @@ export default function Lobby() {
               myId={myId}
               feedback={feedback}
               onGuess={submitGuess}
+              isHost={isHost}
+              onReplay={replay}
             />
           )}
 

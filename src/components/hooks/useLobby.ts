@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import Peer, { type DataConnection } from "peerjs";
-import { isCorrectGuess } from "./matchGuess.ts";
+import { calcPoints, guessQuality } from "./matchGuess";
+import { cleanName, defaultName } from "./useUsername";
 
 export type Player = { id: string; name: string; isHost: boolean };
 export type Song = {
@@ -35,9 +36,24 @@ export type GameState = {
   round: Round | null;
   reveal: Reveal | null;
   solved: string[]; // player ids who found the current song
-  scores: Record<string, number>;
+  gained: Record<string, number>; // points each player won this round
+  scores: Record<string, number>; // total points
 };
-export type Feedback = { round: number; correct: boolean; n: number };
+export type Feedback = {
+  round: number;
+  correct: boolean;
+  points: number;
+  perfect: boolean;
+  n: number;
+};
+
+type GuessResult = {
+  type: "guessResult";
+  round: number;
+  correct: boolean;
+  points: number;
+  perfect: boolean;
+};
 
 type Message =
   | { type: "join"; name: string }
@@ -45,14 +61,22 @@ type Message =
   | { type: "game"; game: GameState }
   | { type: "songs"; songs: Song[] }
   | { type: "guess"; text: string }
-  | { type: "guessResult"; round: number; correct: boolean }
+  | GuessResult
   | { type: "kicked" };
+
+const toFeedback = (m: GuessResult): Feedback => ({
+  round: m.round,
+  correct: m.correct,
+  points: m.points,
+  perfect: m.perfect,
+  n: Date.now(),
+});
 
 const PREFIX = "guessthesong-";
 export const SONGS_REQUIRED = 3;
 export const PICK_SECONDS = 5 * 60;
 export const GUESS_SECONDS = 30;
-export const REVEAL_SECONDS = 8;
+export const REVEAL_SECONDS = 7;
 
 const INITIAL_GAME: GameState = {
   phase: "lobby",
@@ -61,6 +85,7 @@ const INITIAL_GAME: GameState = {
   round: null,
   reveal: null,
   solved: [],
+  gained: {},
   scores: {},
 };
 
@@ -88,6 +113,7 @@ export function useLobby(code: string, isHost: boolean, username: string) {
   const startRef = useRef<(() => void) | null>(null);
   const submitRef = useRef<((songs: Song[]) => void) | null>(null);
   const guessRef = useRef<((text: string) => void) | null>(null);
+  const replayRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!username) return;
@@ -131,15 +157,9 @@ export function useLobby(code: string, isHost: boolean, username: string) {
         });
       };
 
-      const reply = (playerId: string, msg: Message) => {
+      const reply = (playerId: string, msg: GuessResult) => {
         if (playerId === hostId) {
-          if (msg.type === "guessResult") {
-            setFeedback({
-              round: msg.round,
-              correct: msg.correct,
-              n: Date.now(),
-            });
-          }
+          setFeedback(toFeedback(msg));
           return;
         }
         const c = connections.get(playerId);
@@ -158,6 +178,7 @@ export function useLobby(code: string, isHost: boolean, username: string) {
             round: null,
             reveal: null,
             solved: [],
+            gained: {},
             timeLeft: 0,
           });
           return;
@@ -169,6 +190,7 @@ export function useLobby(code: string, isHost: boolean, username: string) {
           phase: "guess",
           timeLeft: left,
           solved: [],
+          gained: {},
           reveal: null,
           round: {
             index: roundIndex,
@@ -223,22 +245,46 @@ export function useLobby(code: string, isHost: boolean, username: string) {
         const item = queue[roundIndex];
         if (current.phase !== "guess" || !item || playerId === item.ownerId)
           return;
+        if (current.solved.includes(playerId)) return;
 
-        const alreadySolved = current.solved.includes(playerId);
-        const correct = alreadySolved || isCorrectGuess(text, item.song.title);
+        // 0 = wrong, 0.6 to 1 = how close the guess was
+        const quality = guessQuality(text, item.song.title);
 
-        if (correct && !alreadySolved) {
-          publish({
-            solved: [...current.solved, playerId],
-            scores: {
-              ...current.scores,
-              [playerId]: (current.scores[playerId] ?? 0) + 1,
-            },
+        if (quality === 0) {
+          reply(playerId, {
+            type: "guessResult",
+            round: roundIndex,
+            correct: false,
+            points: 0,
+            perfect: false,
           });
+          return;
         }
 
-        reply(playerId, { type: "guessResult", round: roundIndex, correct });
-        if (correct && !alreadySolved) checkRoundDone();
+        const points = calcPoints(
+          quality,
+          current.timeLeft,
+          GUESS_SECONDS,
+          current.solved.length === 0,
+        );
+
+        publish({
+          solved: [...current.solved, playerId],
+          gained: { ...current.gained, [playerId]: points },
+          scores: {
+            ...current.scores,
+            [playerId]: (current.scores[playerId] ?? 0) + points,
+          },
+        });
+
+        reply(playerId, {
+          type: "guessResult",
+          round: roundIndex,
+          correct: true,
+          points,
+          perfect: quality >= 0.95,
+        });
+        checkRoundDone();
       };
 
       const startGuessing = () => {
@@ -256,7 +302,7 @@ export function useLobby(code: string, isHost: boolean, username: string) {
         list.forEach((p) => (scores[p.id] = 0));
 
         roundIndex = -1;
-        publish({ scores, solved: [], round: null, reveal: null });
+        publish({ scores, solved: [], gained: {}, round: null, reveal: null });
         nextRound();
       };
 
@@ -306,6 +352,16 @@ export function useLobby(code: string, isHost: boolean, username: string) {
       };
       guessRef.current = (text) => handleGuess(hostId, text);
 
+      replayRef.current = () => {
+        if (current.phase !== "results") return;
+        clearInterval(timer);
+        songsByPlayer.clear();
+        queue = [];
+        roundIndex = -1;
+        setFeedback(null);
+        publish({ ...INITIAL_GAME });
+      };
+
       peer.on("open", (id) => {
         hostId = id;
         setMyId(id);
@@ -322,10 +378,13 @@ export function useLobby(code: string, isHost: boolean, username: string) {
           if (msg.type === "join") {
             list = [
               ...list.filter((p) => p.id !== conn.peer),
-              { id: conn.peer, name: msg.name, isHost: false },
+              {
+                id: conn.peer,
+                name: cleanName(msg.name) || defaultName(),
+                isHost: false,
+              },
             ];
             broadcast();
-            // a player who joins late gets the current game phase too
             conn.send({ type: "game", game: current } as Message);
           }
           if (msg.type === "songs") {
@@ -376,14 +435,13 @@ export function useLobby(code: string, isHost: boolean, username: string) {
         conn.on("data", (data) => {
           const msg = data as Message;
           if (msg.type === "players") setPlayers(msg.players);
-          if (msg.type === "game") setGameState(msg.game);
-          if (msg.type === "guessResult") {
-            setFeedback({
-              round: msg.round,
-              correct: msg.correct,
-              n: Date.now(),
-            });
+          if (msg.type === "game") {
+            setGameState(msg.game);
+            if (msg.game.phase === "lobby" || msg.game.phase === "pick") {
+              setFeedback(null);
+            }
           }
+          if (msg.type === "guessResult") setFeedback(toFeedback(msg));
           if (msg.type === "kicked") {
             kicked = true;
             fail("You were removed from the lobby by the leader.");
@@ -409,6 +467,7 @@ export function useLobby(code: string, isHost: boolean, username: string) {
       startRef.current = null;
       submitRef.current = null;
       guessRef.current = null;
+      replayRef.current = null;
       connectionsRef.current.clear();
       peer.destroy();
     };
@@ -429,6 +488,8 @@ export function useLobby(code: string, isHost: boolean, username: string) {
 
   const submitGuess = (text: string) => guessRef.current?.(text);
 
+  const replay = () => replayRef.current?.();
+
   return {
     players,
     status,
@@ -440,5 +501,6 @@ export function useLobby(code: string, isHost: boolean, username: string) {
     submitGuess,
     feedback,
     myId,
+    replay,
   };
 }

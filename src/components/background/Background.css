@@ -1,0 +1,112 @@
+.bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* the light from the fixtures at the top */
+.bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    60% 30% at 50% 0%,
+    rgba(96, 165, 250, 0.22),
+    transparent 75%
+  );
+}
+
+/* darkens the edges so the middle of the screen stays calm */
+.bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 50%,
+    rgba(11, 17, 32, 0.7) 100%
+  );
+}
+
+/* a spotlight: a thin top that widens downwards, swinging like a pendulum */
+.beam {
+  position: absolute;
+  top: -4vh;
+  left: var(--x);
+  width: 34vw;
+  margin-left: -17vw;
+  height: 125vh;
+  transform-origin: 50% 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(var(--c), 0.95),
+    rgba(var(--c), 0) 78%
+  );
+  clip-path: polygon(48% 0, 52% 0, 100% 100%, 0 100%);
+  opacity: 0.2;
+  animation:
+    sweep var(--t) ease-in-out infinite alternate,
+    beat 1.8s ease-in-out infinite;
+  animation-delay: var(--d), 0s;
+}
+
+@keyframes sweep {
+  from {
+    transform: rotate(calc(var(--a) * -1));
+  }
+  to {
+    transform: rotate(var(--a));
+  }
+}
+
+/* the beams brighten a little on every "beat" */
+@keyframes beat {
+  0%,
+  100% {
+    opacity: 0.14;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* glitter */
+.sparkle {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: var(--size);
+  height: var(--size);
+  border-radius: 50%;
+  background: #bfdbfe;
+  box-shadow: 0 0 8px 2px rgba(147, 197, 253, 0.7);
+  opacity: 0;
+  animation: twinkle var(--t) ease-in-out infinite;
+  animation-delay: var(--d);
+}
+
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0;
+    scale: 0.4;
+  }
+  50% {
+    opacity: 0.9;
+    scale: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .beam {
+    animation: none;
+    transform: rotate(calc(var(--a) * 0.5));
+  }
+
+  .sparkle {
+    animation: none;
+    opacity: 0.4;
+  }
+}
