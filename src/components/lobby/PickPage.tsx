@@ -249,7 +249,7 @@ export default function PickPage({ timeLeft, onSongsChange }: Props) {
             <div className="clip-editor">
               <p className="clip-title">{selected.title}</p>
               <div className="player" ref={playerBox} />
-
+              {playerError && <p className="error">{playerError}</p>}
               <label>
                 Start at {formatTime(start)}
                 <input
