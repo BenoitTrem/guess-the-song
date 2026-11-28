@@ -7,6 +7,7 @@ import {
   searchVideos,
   type VideoResult,
 } from "../hooks/youtube";
+import { getVolume, useVolume } from "../hooks/volume";
 import "./Lobby.css";
 import "./PickPage.css";
 
@@ -39,7 +40,14 @@ export default function PickPage({ timeLeft, onSongsChange }: Props) {
     undefined,
   );
 
+  const [playerError, setPlayerError] = useState("");
+  const durationTimer = useRef<ReturnType<typeof setInterval> | undefined>(
+    undefined,
+  );
+
   const done = songs.length >= SONGS_REQUIRED;
+
+  const volume = useVolume();
 
   const handleSearch = async () => {
     const text = query.trim();
@@ -74,6 +82,7 @@ export default function PickPage({ timeLeft, onSongsChange }: Props) {
     setSelected(video);
     setStart(0);
     setDuration(0);
+    setPlayerError("");
     setResults([]);
   };
 
@@ -84,7 +93,6 @@ export default function PickPage({ timeLeft, onSongsChange }: Props) {
 
     loadYouTubeApi().then(() => {
       if (cancelled || !playerBox.current) return;
-      // YT replaces the element, so give it a fresh child each time
       const target = document.createElement("div");
       playerBox.current.innerHTML = "";
       playerBox.current.appendChild(target);
@@ -95,18 +103,63 @@ export default function PickPage({ timeLeft, onSongsChange }: Props) {
         height: "100%",
         playerVars: { playsinline: 1, rel: 0 },
         events: {
-          onReady: (e: any) => setDuration(Math.floor(e.target.getDuration())),
+          onReady: (e: any) => {
+            e.target.setVolume(getVolume());
+
+            const readDuration = () => {
+              const d = Math.floor(e.target.getDuration?.() ?? 0);
+              if (d > 0) setDuration(d);
+              return d > 0;
+            };
+            if (readDuration()) return;
+
+            // YouTube often reports 0 at first, so keep asking
+            let tries = 0;
+            let nudged = false;
+            durationTimer.current = setInterval(() => {
+              tries += 1;
+
+              if (readDuration()) {
+                clearInterval(durationTimer.current);
+                if (nudged) {
+                  e.target.pauseVideo();
+                  e.target.seekTo(0, true);
+                  e.target.unMute();
+                }
+                return;
+              }
+
+              // after 2 seconds with no answer: a silent play makes it load the info
+              if (tries === 8 && !nudged) {
+                nudged = true;
+                e.target.mute();
+                e.target.playVideo();
+              }
+
+              if (tries > 40) {
+                clearInterval(durationTimer.current);
+                setPlayerError("Couldn't load this video. Try another one.");
+              }
+            }, 250);
+          },
+          onError: () =>
+            setPlayerError("This video can't be played here. Try another one."),
         },
       });
     });
 
     return () => {
       cancelled = true;
+      clearInterval(durationTimer.current);
       clearTimeout(stopTimeout.current);
       playerRef.current?.destroy?.();
       playerRef.current = null;
     };
   }, [selected]);
+
+  useEffect(() => {
+    playerRef.current?.setVolume?.(volume);
+  }, [volume]);
 
   const preview = () => {
     const player = playerRef.current;

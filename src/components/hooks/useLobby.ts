@@ -47,6 +47,20 @@ export type Feedback = {
   n: number;
 };
 
+export type ChatMessage = {
+  id: string;
+  playerId: string;
+  name: string;
+  text: string;
+  time: number;
+};
+
+export type Live = {
+  round: number;
+  texts: Record<string, string>;
+  wrong: Record<string, number>;
+};
+
 type GuessResult = {
   type: "guessResult";
   round: number;
@@ -61,6 +75,11 @@ type Message =
   | { type: "game"; game: GameState }
   | { type: "songs"; songs: Song[] }
   | { type: "guess"; text: string }
+  | { type: "say"; text: string } // player -> host
+  | { type: "chat"; message: ChatMessage } // host -> everybody
+  | { type: "chatHistory"; messages: ChatMessage[] } // host -> a new player
+  | { type: "typing"; text: string } // player -> host
+  | { type: "live"; live: Live } // host -> owner and players who found it
   | GuessResult
   | { type: "kicked" };
 
@@ -75,8 +94,13 @@ const toFeedback = (m: GuessResult): Feedback => ({
 const PREFIX = "guessthesong-";
 export const SONGS_REQUIRED = 3;
 export const PICK_SECONDS = 5 * 60;
-export const GUESS_SECONDS = 30;
+export const GUESS_SECONDS = 45;
 export const REVEAL_SECONDS = 7;
+export const MAX_CHAT_LENGTH = 200;
+const CHAT_HISTORY = 100; // messages kept
+const CHAT_BURST = 5; // max messages...
+const CHAT_WINDOW_MS = 5000; // ...per 5 seconds, per player
+const WRONG_FLASH_MS = 1200;
 
 const INITIAL_GAME: GameState = {
   phase: "lobby",
@@ -104,9 +128,12 @@ export function useLobby(code: string, isHost: boolean, username: string) {
   const [game, setGameState] = useState<GameState>(INITIAL_GAME);
   const [myId, setMyId] = useState("");
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<"connecting" | "connected" | "error">(
     "connecting",
   );
+  const [live, setLive] = useState<Live | null>(null);
+  const typingRef = useRef<((text: string) => void) | null>(null);
   const [error, setError] = useState("");
 
   const connectionsRef = useRef<Map<string, DataConnection>>(new Map());
@@ -114,6 +141,7 @@ export function useLobby(code: string, isHost: boolean, username: string) {
   const submitRef = useRef<((songs: Song[]) => void) | null>(null);
   const guessRef = useRef<((text: string) => void) | null>(null);
   const replayRef = useRef<(() => void) | null>(null);
+  const chatRef = useRef<((text: string) => void) | null>(null);
 
   useEffect(() => {
     if (!username) return;
@@ -122,7 +150,9 @@ export function useLobby(code: string, isHost: boolean, username: string) {
     setError("");
     setGameState(INITIAL_GAME);
     setFeedback(null);
-
+    setMessages([]);
+    setLive(null);
+    const timeouts: ReturnType<typeof setTimeout>[] = [];
     const fail = (message: string) => {
       setError(message);
       setStatus("error");
@@ -140,6 +170,11 @@ export function useLobby(code: string, isHost: boolean, username: string) {
       let hostId = "";
       let queue: QueueItem[] = [];
       let roundIndex = -1;
+      let liveData: Live = { round: -1, texts: {}, wrong: {} };
+
+      let chatLog: ChatMessage[] = [];
+      let chatCounter = 0;
+      const chatTimes = new Map<string, number[]>();
 
       const broadcast = () => {
         setPlayers(list);
@@ -164,6 +199,84 @@ export function useLobby(code: string, isHost: boolean, username: string) {
         }
         const c = connections.get(playerId);
         if (c?.open) c.send(msg);
+      };
+
+      /* ---------- chat ---------- */
+
+      // The host decides the sender's name from the player list, so nobody can
+      // write as somebody else. No chat while a song plays, so nobody can
+      // type the answer.
+      const addChat = (playerId: string, raw: string) => {
+        if (current.phase === "guess") return;
+
+        const player = list.find((p) => p.id === playerId);
+        if (!player) return;
+
+        const text = String(raw)
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, MAX_CHAT_LENGTH);
+        if (!text) return;
+
+        // slow down spam
+        const now = Date.now();
+        const recent = (chatTimes.get(playerId) ?? []).filter(
+          (t) => now - t < CHAT_WINDOW_MS,
+        );
+        if (recent.length >= CHAT_BURST) return;
+        chatTimes.set(playerId, [...recent, now]);
+
+        const message: ChatMessage = {
+          id: `${now}-${chatCounter++}`,
+          playerId,
+          name: player.name,
+          text,
+          time: now,
+        };
+        chatLog = [...chatLog, message].slice(-CHAT_HISTORY);
+        setMessages(chatLog);
+        connections.forEach((c) => {
+          if (c.open) c.send({ type: "chat", message } as Message);
+        });
+      };
+
+      /* ---------- live typing ---------- */
+
+      // Only the song owner and players who already found it get this.
+      // Players still guessing never receive it, so nobody can copy an answer.
+      const isSpectator = (playerId: string) => {
+        const item = queue[roundIndex];
+        return (
+          !!item &&
+          (item.ownerId === playerId || current.solved.includes(playerId))
+        );
+      };
+
+      const sendLive = () => {
+        setLive(liveData);
+        connections.forEach((c, id) => {
+          if (c.open && isSpectator(id)) {
+            c.send({ type: "live", live: liveData } as Message);
+          }
+        });
+      };
+
+      const resetLive = () => {
+        liveData = { round: roundIndex, texts: {}, wrong: {} };
+        sendLive();
+      };
+
+      const handleTyping = (playerId: string, raw: string) => {
+        const item = queue[roundIndex];
+        if (current.phase !== "guess" || !item || playerId === item.ownerId)
+          return;
+        if (current.solved.includes(playerId)) return;
+
+        liveData = {
+          ...liveData,
+          texts: { ...liveData.texts, [playerId]: raw.slice(0, 100) },
+        };
+        sendLive();
       };
 
       /* ---------- guessing rounds ---------- */
@@ -201,7 +314,7 @@ export function useLobby(code: string, isHost: boolean, username: string) {
             ownerId: item.ownerId,
           },
         });
-
+        resetLive();
         timer = setInterval(() => {
           left -= 1;
           if (left > 0) publish({ timeLeft: left });
@@ -220,7 +333,6 @@ export function useLobby(code: string, isHost: boolean, username: string) {
           timeLeft: left,
           reveal: { title: item.song.title, ownerName: item.ownerName },
         });
-
         timer = setInterval(() => {
           left -= 1;
           if (left > 0) publish({ timeLeft: left });
@@ -258,6 +370,30 @@ export function useLobby(code: string, isHost: boolean, username: string) {
             points: 0,
             perfect: false,
           });
+
+          // the people watching see this guess flash red, then it clears
+          liveData = {
+            ...liveData,
+            texts: { ...liveData.texts, [playerId]: text },
+            wrong: {
+              ...liveData.wrong,
+              [playerId]: (liveData.wrong[playerId] ?? 0) + 1,
+            },
+          };
+          sendLive();
+
+          const wrongRound = roundIndex;
+          timeouts.push(
+            setTimeout(() => {
+              if (wrongRound !== roundIndex) return;
+              if (liveData.texts[playerId] !== text) return; // typed again
+              liveData = {
+                ...liveData,
+                texts: { ...liveData.texts, [playerId]: "" },
+              };
+              sendLive();
+            }, WRONG_FLASH_MS),
+          );
           return;
         }
 
@@ -277,6 +413,12 @@ export function useLobby(code: string, isHost: boolean, username: string) {
           },
         });
 
+        liveData = {
+          ...liveData,
+          texts: { ...liveData.texts, [playerId]: "" },
+        };
+        sendLive();
+
         reply(playerId, {
           type: "guessResult",
           round: roundIndex,
@@ -290,13 +432,30 @@ export function useLobby(code: string, isHost: boolean, username: string) {
       const startGuessing = () => {
         clearInterval(timer);
 
+        // random player order (decided once), and each player's songs in random order
+        const lanes = shuffle(
+          [...songsByPlayer.entries()].map(([ownerId, songs]) => ({
+            ownerId,
+            ownerName: list.find((p) => p.id === ownerId)?.name ?? "Player",
+            songs: shuffle([...songs]),
+          })),
+        );
+
+        // one song from each player in turn, then start again, until all are used
         queue = [];
-        songsByPlayer.forEach((songs, ownerId) => {
-          const ownerName =
-            list.find((p) => p.id === ownerId)?.name ?? "Player";
-          songs.forEach((song) => queue.push({ ownerId, ownerName, song }));
-        });
-        shuffle(queue);
+        const most = Math.max(0, ...lanes.map((lane) => lane.songs.length));
+        for (let i = 0; i < most; i++) {
+          for (const lane of lanes) {
+            const song = lane.songs[i];
+            if (song) {
+              queue.push({
+                ownerId: lane.ownerId,
+                ownerName: lane.ownerName,
+                song,
+              });
+            }
+          }
+        }
 
         const scores: Record<string, number> = {};
         list.forEach((p) => (scores[p.id] = 0));
@@ -345,13 +504,14 @@ export function useLobby(code: string, isHost: boolean, username: string) {
         }, 1000);
       };
 
-      // the host picks songs and guesses too
+      // the host picks songs, guesses and chats too
       submitRef.current = (songs) => {
         songsByPlayer.set(hostId, songs);
         checkAllDone();
       };
       guessRef.current = (text) => handleGuess(hostId, text);
-
+      chatRef.current = (text) => addChat(hostId, text);
+      typingRef.current = (text) => handleTyping(hostId, text);
       replayRef.current = () => {
         if (current.phase !== "results") return;
         clearInterval(timer);
@@ -360,6 +520,8 @@ export function useLobby(code: string, isHost: boolean, username: string) {
         roundIndex = -1;
         setFeedback(null);
         publish({ ...INITIAL_GAME });
+        liveData = { round: -1, texts: {}, wrong: {} };
+        setLive(null);
       };
 
       peer.on("open", (id) => {
@@ -386,6 +548,8 @@ export function useLobby(code: string, isHost: boolean, username: string) {
             ];
             broadcast();
             conn.send({ type: "game", game: current } as Message);
+            // a player who joins late gets the chat so far
+            conn.send({ type: "chatHistory", messages: chatLog } as Message);
           }
           if (msg.type === "songs") {
             songsByPlayer.set(conn.peer, msg.songs.slice(0, SONGS_REQUIRED));
@@ -394,11 +558,18 @@ export function useLobby(code: string, isHost: boolean, username: string) {
           if (msg.type === "guess") {
             handleGuess(conn.peer, String(msg.text).slice(0, 100));
           }
+          if (msg.type === "say") {
+            addChat(conn.peer, msg.text);
+          }
+          if (msg.type === "typing") {
+            handleTyping(conn.peer, String(msg.text));
+          }
         });
 
         conn.on("close", () => {
           connections.delete(conn.peer);
           songsByPlayer.delete(conn.peer);
+          chatTimes.delete(conn.peer);
           list = list.filter((p) => p.id !== conn.peer);
           broadcast();
           checkAllDone();
@@ -426,8 +597,14 @@ export function useLobby(code: string, isHost: boolean, username: string) {
           submitRef.current = (songs) => {
             if (conn.open) conn.send({ type: "songs", songs } as Message);
           };
+          typingRef.current = (text) => {
+            if (conn.open) conn.send({ type: "typing", text } as Message);
+          };
           guessRef.current = (text) => {
             if (conn.open) conn.send({ type: "guess", text } as Message);
+          };
+          chatRef.current = (text) => {
+            if (conn.open) conn.send({ type: "say", text } as Message);
           };
           setStatus("connected");
         });
@@ -439,9 +616,15 @@ export function useLobby(code: string, isHost: boolean, username: string) {
             setGameState(msg.game);
             if (msg.game.phase === "lobby" || msg.game.phase === "pick") {
               setFeedback(null);
+              setLive(null);
             }
           }
+          if (msg.type === "live") setLive(msg.live);
           if (msg.type === "guessResult") setFeedback(toFeedback(msg));
+          if (msg.type === "chat") {
+            setMessages((prev) => [...prev, msg.message].slice(-CHAT_HISTORY));
+          }
+          if (msg.type === "chatHistory") setMessages(msg.messages);
           if (msg.type === "kicked") {
             kicked = true;
             fail("You were removed from the lobby by the leader.");
@@ -468,6 +651,9 @@ export function useLobby(code: string, isHost: boolean, username: string) {
       submitRef.current = null;
       guessRef.current = null;
       replayRef.current = null;
+      chatRef.current = null;
+      timeouts.forEach(clearTimeout);
+      typingRef.current = null;
       connectionsRef.current.clear();
       peer.destroy();
     };
@@ -490,6 +676,10 @@ export function useLobby(code: string, isHost: boolean, username: string) {
 
   const replay = () => replayRef.current?.();
 
+  const sendChat = (text: string) => chatRef.current?.(text);
+
+  const sendTyping = (text: string) => typingRef.current?.(text);
+
   return {
     players,
     status,
@@ -502,5 +692,9 @@ export function useLobby(code: string, isHost: boolean, username: string) {
     feedback,
     myId,
     replay,
+    messages,
+    sendChat,
+    live,
+    sendTyping,
   };
 }

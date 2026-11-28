@@ -1,0 +1,61 @@
+/* sits on the left side of the card (the .lobby card must be position: relative) */
+.volume {
+  position: absolute;
+  right: calc(100% + 16px);
+  top: 50%;
+  translate: 0 -50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 10px;
+  background: var(--card-bg, var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+/* vertical slider, loudest at the top */
+.lobby .volume input[type="range"] {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 20px;
+  height: 140px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.volume button {
+  margin-bottom: 0;
+}
+
+.volume-value {
+  font-size: 0.8em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+/* not enough room on the left: put it inside the card as a horizontal bar */
+@media (max-width: 900px) {
+  .volume {
+    position: static;
+    translate: none;
+    flex-direction: row;
+    margin-bottom: 16px;
+    padding: 8px 12px;
+    background: var(--bg);
+  }
+
+  .lobby .volume input[type="range"] {
+    writing-mode: horizontal-tb;
+    direction: ltr;
+    flex: 1;
+    width: auto;
+    height: 20px;
+  }
+}

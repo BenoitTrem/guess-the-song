@@ -229,6 +229,35 @@ input:focus {
   box-shadow: 0 0 0 3px var(--accent-bg);
 }
 
+input:hover {
+  border-color: var(--accent);
+}
+
+textarea {
+  font: inherit;
+  min-width: 295px;
+  width: 295px;
+  max-width: 295px;
+  height: 27px;
+  min-height: 27px;
+  max-height: 200px;
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+textarea:hover {
+  border-color: var(--accent);
+}
+
+textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
 code {
   font-family: var(--mono);
   font-size: 0.9em;

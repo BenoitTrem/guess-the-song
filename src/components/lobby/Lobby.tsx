@@ -13,6 +13,8 @@ import Countdown from "./Countdown";
 import PickPage from "./PickPage";
 import GuessPage from "./GuessPage";
 import "./Lobby.css";
+import VolumeSlider from "./VolumeSlider";
+import Chat from "./Chat";
 import { Crown } from "lucide-react";
 
 export default function Lobby() {
@@ -35,6 +37,10 @@ export default function Lobby() {
     feedback,
     myId,
     replay,
+    messages,
+    sendChat,
+    live,
+    sendTyping,
   } = useLobby(code!, isHost, username);
 
   if (!username) return <Navigate to="/" replace />;
@@ -70,6 +76,9 @@ export default function Lobby() {
 
       {status === "connected" && (
         <>
+          {(game.phase === "pick" ||
+            game.phase === "guess" ||
+            game.phase === "reveal") && <VolumeSlider />}
           {(game.phase === "lobby" || game.phase === "countdown") && (
             <>
               {isHost && (
@@ -139,9 +148,16 @@ export default function Lobby() {
               onGuess={submitGuess}
               isHost={isHost}
               onReplay={replay}
+              live={live}
+              onTyping={sendTyping}
             />
           )}
-
+          <Chat
+            messages={messages}
+            myId={myId}
+            onSend={sendChat}
+            paused={game.phase === "guess"}
+          />
           <button className="quit-btn" onClick={handleQuit}>
             Quit lobby
           </button>

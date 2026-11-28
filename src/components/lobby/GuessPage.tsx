@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import type { Feedback, GameState, Player, Round } from "../hooks/useLobby";
+import type {
+  Feedback,
+  GameState,
+  Live,
+  Player,
+  Round,
+} from "../hooks/useLobby";
 import { loadYouTubeApi } from "../hooks/youtube";
 import "./GuessPage.css";
+import { getVolume, useVolume } from "../hooks/volume";
 import { Crown } from "lucide-react";
 
 type Props = {
@@ -12,11 +19,14 @@ type Props = {
   onGuess: (text: string) => void;
   isHost: boolean;
   onReplay: () => void;
+  live: Live | null;
+  onTyping: (text: string) => void;
 };
 
 function ClipPlayer({ round, revealed }: { round: Round; revealed: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   const player = useRef<any>(null);
+  const volume = useVolume();
 
   const play = () => {
     player.current?.loadVideoById?.({
@@ -39,16 +49,24 @@ function ClipPlayer({ round, revealed }: { round: Round; revealed: boolean }) {
         width: "100%",
         height: "100%",
         playerVars: { controls: 0, disablekb: 1, playsinline: 1, rel: 0 },
-        events: { onReady: play },
+        events: {
+          onReady: () => {
+            player.current?.setVolume?.(getVolume());
+            play();
+          },
+        },
       });
     });
-
     return () => {
       cancelled = true;
       player.current?.destroy?.();
       player.current = null;
     };
   }, [round.index]);
+
+  useEffect(() => {
+    player.current?.setVolume?.(volume);
+  }, [volume]);
 
   return (
     <div className="clip">
@@ -59,6 +77,62 @@ function ClipPlayer({ round, revealed }: { round: Round; revealed: boolean }) {
       <button className="secondary" onClick={play}>
         Replay clip
       </button>
+    </div>
+  );
+}
+
+function LiveGuesses({
+  live,
+  round,
+  players,
+  solved,
+}: {
+  live: Live | null;
+  round: Round;
+  players: Player[];
+  solved: string[];
+}) {
+  const [flash, setFlash] = useState<Record<string, boolean>>({});
+  const seen = useRef<Record<string, number> | null>(null);
+
+  // ignore data left over from another round
+  const data = live && live.round === round.index ? live : null;
+
+  useEffect(() => {
+    const now = data?.wrong ?? {};
+    const before = seen.current;
+    seen.current = { ...now };
+    if (!before) return; // first look: just remember the counts, no flash
+
+    for (const id of Object.keys(now)) {
+      if (now[id] > (before[id] ?? 0)) {
+        setFlash((f) => ({ ...f, [id]: true }));
+        window.setTimeout(() => setFlash((f) => ({ ...f, [id]: false })), 1000);
+      }
+    }
+  }, [data?.wrong]);
+
+  const guessers = players.filter(
+    (p) => p.id !== round.ownerId && !solved.includes(p.id),
+  );
+  if (guessers.length === 0) return null;
+
+  return (
+    <div className="live-guesses">
+      <p className="hint">Live guesses</p>
+      {guessers.map((p) => (
+        <div className="live-row" key={p.id}>
+          <span className="live-name">{p.name}</span>
+          <input
+            readOnly
+            tabIndex={-1}
+            aria-label={`${p.name}'s guess`}
+            className={flash[p.id] ? "wrong" : ""}
+            value={data?.texts[p.id] ?? ""}
+            placeholder="..."
+          />
+        </div>
+      ))}
     </div>
   );
 }
@@ -175,6 +249,8 @@ export default function GuessPage({
   onGuess,
   isHost,
   onReplay,
+  live,
+  onTyping,
 }: Props) {
   const [text, setText] = useState("");
   const [seen, setSeen] = useState(0);
@@ -241,40 +317,53 @@ export default function GuessPage({
           </p>
         </div>
       ) : (
-        <div className="guess-box">
-          {isOwner ? (
-            <p className="hint">
-              This is your song. Sit tight while the others guess!
-            </p>
-          ) : solved ? (
-            <p className="correct">
-              {feedback?.correct && feedback.round === round.index
-                ? feedback.perfect
-                  ? "Perfect! "
-                  : "Close enough! "
-                : "Correct! "}
-              +{game.gained[myId] ?? 0} points. Waiting for the others...
-            </p>
-          ) : (
-            <>
-              <input
-                placeholder="Song name or artist"
-                value={text}
-                autoFocus
-                maxLength={100}
-                onChange={(e) => {
-                  setText(e.target.value);
-                  setSeen(feedback?.n ?? 0);
-                }}
-                onKeyDown={(e) => e.key === "Enter" && submit()}
-              />
-              <button onClick={submit} disabled={!text.trim()}>
-                Guess
-              </button>
-              {wrong && <p className="error">Not quite, try again!</p>}
-            </>
+        <>
+          <div className="guess-box">
+            {isOwner ? (
+              <p className="hint">
+                This is your song. Sit tight while the others guess!
+              </p>
+            ) : solved ? (
+              <p className="correct">
+                {feedback?.correct && feedback.round === round.index
+                  ? feedback.perfect
+                    ? "Perfect! "
+                    : "Close enough! "
+                  : "Correct! "}
+                +{game.gained[myId] ?? 0} points. Waiting for the others...
+              </p>
+            ) : (
+              <>
+                <input
+                  placeholder="Song name or artist"
+                  value={text}
+                  autoFocus
+                  maxLength={100}
+                  onChange={(e) => {
+                    setText(e.target.value);
+                    setSeen(feedback?.n ?? 0);
+                    onTyping(e.target.value);
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && submit()}
+                />
+                <button onClick={submit} disabled={!text.trim()}>
+                  Guess
+                </button>
+                {wrong && <p className="error">Not quite, try again!</p>}
+              </>
+            )}
+          </div>
+
+          {locked && (
+            <LiveGuesses
+              key={round.index}
+              live={live}
+              round={round}
+              players={players}
+              solved={game.solved}
+            />
           )}
-        </div>
+        </>
       )}
 
       <Scoreboard players={players} game={game} revealing={revealing} />

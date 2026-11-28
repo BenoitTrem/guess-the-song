@@ -109,7 +109,7 @@ function Home() {
             time in random order.
           </li>
           <li>
-            You have 30 seconds to type the song name or the artist. It doesn't
+            You have 45 seconds to type the song name or the artist. It doesn't
             have to be exact, and each correct guess earns a point.
           </li>
           <li>

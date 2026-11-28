@@ -159,3 +159,7 @@
   min-width: 0;
   margin-bottom: var(--depth);
 }
+
+.lobby {
+  position: relative;
+}
